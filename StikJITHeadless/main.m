@@ -20,8 +20,12 @@ int StikJITHeadlessMain(void) {
     NSDictionary *appInfo = [NSClassFromString(@"LiveProcessHandler") retrievedAppInfo];
     NSURL *pairingFile = [NSURL URLByResolvingBookmarkData:appInfo[@"pairingBookmark"] options:0 relativeToURL:nil bookmarkDataIsStale:nil error:nil];
     NSURL *ddiPath = [NSURL URLByResolvingBookmarkData:appInfo[@"ddiBookmark"] options:0 relativeToURL:nil bookmarkDataIsStale:nil error:nil];
-    NSData *scriptData = [[NSData alloc] initWithBase64EncodedString:appInfo[@"script"] options:0];
-    NSString *script = [[NSString alloc] initWithData:scriptData encoding:NSUTF8StringEncoding];
+    NSString *script = nil;
+    NSString *scriptBase64 = appInfo[@"script"];
+    if (scriptBase64.length > 0) {
+        NSData *scriptData = [[NSData alloc] initWithBase64EncodedString:scriptBase64 options:0];
+        script = [[NSString alloc] initWithData:scriptData encoding:NSUTF8StringEncoding];
+    }
     [pairingFile startAccessingSecurityScopedResource];
     [ddiPath startAccessingSecurityScopedResource];
     

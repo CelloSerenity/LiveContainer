@@ -368,7 +368,7 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
     bool isJitEnabled = checkJITEnabled();
     if (isJitEnabled) {
         init_bypassDyldLibValidation();
-    } else if (!isLiveProcess && guestAppInfo[@"isJITNeeded"] && [NSUserDefaults.lcSharedDefaults integerForKey:@"LCJITEnablerType"] == 7) { // JITEnablerTypeStikJITHeadless
+    } else if (!isLiveProcess && [guestAppInfo[@"isJITNeeded"] boolValue] && [NSUserDefaults.lcSharedDefaults integerForKey:@"LCJITEnablerType"] == 7) { // JITEnablerTypeStikJITHeadless
         __block NSError *error;
         NSExtension *ext = [NSExtension extensionWithIdentifier:LCSharedUtils.liveProcessBundleIdentifier error:&error];
         if (!ext) {
@@ -382,15 +382,19 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
         }
         
         NSExtensionItem *item = [NSExtensionItem new];
-        item.userInfo = @{
+        NSMutableDictionary *userInfo = [@{
             // TODO: pairing file sandbox tokens
             @"customPayloadDylib": @"@rpath/StikJITHeadless.framework/StikJITHeadless",
             @"customPayloadEntry": @"StikJITHeadlessMain",
             @"pairingBookmark": [pairingURL bookmarkDataWithOptions:(1<<11) includingResourceValuesForKeys:0 relativeToURL:0 error:0],
             @"ddiBookmark": [ddiURL bookmarkDataWithOptions:(1<<11) includingResourceValuesForKeys:0 relativeToURL:0 error:0],
-            @"script": guestAppInfo[@"jitLaunchScriptJs"] ?: @"",
             @"pid": @(getpid())
-        };
+        } mutableCopy];
+        NSString *script = guestAppInfo[@"jitLaunchScriptJs"];
+        if (![guestAppInfo[@"is32bit"] boolValue] && script.length > 0) {
+            userInfo[@"script"] = script;
+        }
+        item.userInfo = userInfo;
         ext.requestCancellationBlock = ^(NSUUID *uuid, NSError *jitError) {
             error = jitError;
         };
