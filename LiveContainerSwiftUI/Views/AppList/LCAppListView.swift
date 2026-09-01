@@ -742,6 +742,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
             finalNewApp.fixLocalNotification = appToReplace.appInfo.fixLocalNotification
             finalNewApp.lastLaunched = appToReplace.appInfo.lastLaunched
             finalNewApp.jitLaunchScriptJs = appToReplace.appInfo.jitLaunchScriptJs
+            finalNewApp.jitLaunchScriptType = appToReplace.appInfo.jitLaunchScriptType
             finalNewApp.multitaskSpecified = appToReplace.appInfo.multitaskSpecified
             finalNewApp.classicMode = appToReplace.appInfo.classicMode
             finalNewApp.autoSaveDisabled = false
@@ -1074,17 +1075,13 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         }
     }
     
-    func jitLaunch(appName: String, classicMode: UInt) async {
-        await jitLaunch(withScript: "", appName: appName, classicMode: classicMode)
-    }
-
-    func jitLaunch(withScript script: String, appName: String, classicMode: UInt) async {
+    func jitLaunch(scriptType: JITScriptType, customScript: String?, appName: String, classicMode: UInt) async {
         await MainActor.run {
             jitLog = ""
         }
         let enableJITTask = Task {
             
-            let _ = await LCUtils.askForJIT(withScript: script, appName: appName, classicMode: classicMode) { newMsg in
+            let _ = await LCUtils.askForJIT(scriptType: scriptType, customScript: customScript, appName: appName, classicMode: classicMode) { newMsg in
                 Task { await MainActor.run {
                     self.jitLog += "\(newMsg)\n"
                 }}
@@ -1102,14 +1099,14 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
 
     }
     
-    func jitLaunch(withPID pid: Int, withScript script: String? = nil, appName: String) async {
+    func jitLaunch(withPID pid: Int, scriptType: JITScriptType, customScript: String?, appName: String) async {
         await MainActor.run {
-            let encodedData = script?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+            let encodedData = customScript?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
                 
             
             if let jitEnabler = JITEnablerType(rawValue: LCUtils.appGroupUserDefault.integer(forKey: "LCJITEnablerType")) {
                 if jitEnabler == .StosDebug || jitEnabler == .StosDebugLC {
-                    let encoded = encodedData.map { "&script=\($0)" } ?? ""
+                    let encoded = scriptType == .custom ? encodedData.map { "&script=\($0)" } ?? "" : ""
                     if jitEnabler == .StosDebugLC {
                         if let app = sharedModel.apps.first(where: { app in
                             return app.appInfo.urlSchemes().contains("stosdebug") &&
@@ -1131,7 +1128,17 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
                     return
                 }
                 
-                let encoded = encodedData.map { "&script-data=\($0)" } ?? ""
+                let encoded: String
+                switch scriptType {
+                case .none:
+                    encoded = ""
+                case .universal:
+                    encoded = "&script-name=universal.js"
+                case .legacy:
+                    encoded = "&script-name=legacy.js"
+                case .custom:
+                    encoded = encodedData.map { "&script-data=\($0)" } ?? ""
+                }
                 if let url = URL(string: "stikjit://enable-jit?bundle-id=\(Bundle.main.bundleIdentifier!)&pid=\(pid)\(encoded)") {
                     if jitEnabler == .StikJITLC {
                         if let app = sharedModel.apps.first(where: { app in

@@ -1,11 +1,28 @@
 import Foundation
 
+public enum JITScriptType: Int, CaseIterable, Identifiable {
+    case none = 0
+    case universal = 1
+    case legacy = 2
+    case custom = 3
+
+    public var id: Int { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none: "None"
+        case .universal: "Universal"
+        case .legacy: "Legacy"
+        case .custom: "Custom"
+        }
+    }
+}
+
 protocol LCAppModelDelegate {
     func closeNavigationView()
     func changeAppVisibility(app : LCAppModel)
-    func jitLaunch(appName: String, classicMode: UInt) async
-    func jitLaunch(withScript script: String, appName: String, classicMode: UInt) async
-    func jitLaunch(withPID pid: Int, withScript script: String?, appName: String) async
+    func jitLaunch(scriptType: JITScriptType, customScript: String?, appName: String, classicMode: UInt) async
+    func jitLaunch(withPID pid: Int, scriptType: JITScriptType, customScript: String?, appName: String) async
     func showRunWhenMultitaskAlert() async -> Bool?
 }
 
@@ -101,6 +118,12 @@ class LCAppModel: ObservableObject, Hashable {
             appInfo.jitLaunchScriptJs = jitLaunchScriptJs
         }
     }
+
+    @Published var jitLaunchScriptType: JITScriptType {
+        didSet {
+            appInfo.jitLaunchScriptType = jitLaunchScriptType.rawValue
+        }
+    }
     
     @Published var uiSelected32BitEmulator : String {
         didSet {
@@ -188,6 +211,7 @@ class LCAppModel: ObservableObject, Hashable {
         self.uiDontLoadTweakLoader = appInfo.dontLoadTweakLoader
         self.uiDontSign = appInfo.dontSign
         self.jitLaunchScriptJs = appInfo.jitLaunchScriptJs
+        self.jitLaunchScriptType = JITScriptType(rawValue: appInfo.jitLaunchScriptType) ?? .none
         self.uiSelected32BitEmulator = appInfo.selected32BitEmulator ?? ""
         self.uiSpoofSDKVersion = appInfo.spoofSDKVersion
         self.uiRemark = appInfo.remark ?? ""
@@ -340,6 +364,10 @@ class LCAppModel: ObservableObject, Hashable {
         jitNeeded = false
 #endif
         if jitNeeded {
+            if appInfo.is32bit && LCUtils.isTXMScriptRequired() {
+                jitLaunchScriptType = .universal
+            }
+            let customScript = jitLaunchScriptType == .custom ? jitLaunchScriptJs : nil
             if multitask, #available(iOS 17.4, *) {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     LCUtils.launchMultitaskGuestApp(appInfo.displayName()) { pidNumber, error in
@@ -352,22 +380,13 @@ class LCAppModel: ObservableObject, Hashable {
                             return
                         }
                         Task {
-                            if let scriptData = self.jitLaunchScriptJs, !scriptData.isEmpty {
-                                await self.delegate?.jitLaunch(withPID: pidNumber.intValue, withScript: scriptData, appName: self.appInfo.displayName())
-                            } else {
-                                await self.delegate?.jitLaunch(withPID: pidNumber.intValue, withScript: nil, appName: self.appInfo.displayName())
-                            }
+                            await self.delegate?.jitLaunch(withPID: pidNumber.intValue, scriptType: self.jitLaunchScriptType, customScript: customScript, appName: self.appInfo.displayName())
                             continuation.resume()
                         }
                     }
                 }
             } else {
-                // Non-multitask JIT flow remains unchanged
-                if let scriptData = jitLaunchScriptJs, !scriptData.isEmpty {
-                    await delegate?.jitLaunch(withScript: scriptData, appName: self.appInfo.displayName(), classicMode: classicMode)
-                } else {
-                    await delegate?.jitLaunch(appName: self.appInfo.displayName(), classicMode: classicMode)
-                }
+                await delegate?.jitLaunch(scriptType: jitLaunchScriptType, customScript: customScript, appName: self.appInfo.displayName(), classicMode: classicMode)
             }
         } else if multitask, #available(iOS 16.0, *) {
             try await LCUtils.launchMultitaskGuestApp(appInfo.displayName())

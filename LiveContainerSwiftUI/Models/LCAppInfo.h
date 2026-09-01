@@ -44,6 +44,7 @@ typedef NS_ENUM(NSInteger, MultitaskSpecified){
 @property bool dontSign;
 @property bool spoofSDKVersion;
 @property (nonatomic, strong) NSString* jitLaunchScriptJs;
+@property NSInteger jitLaunchScriptType;
 @property (nonatomic, strong) NSString* selected32BitEmulator;
 @property NSDate* lastLaunched;
 @property NSDate* installationDate;

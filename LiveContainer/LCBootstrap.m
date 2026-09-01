@@ -391,7 +391,10 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
             @"pid": @(getpid())
         } mutableCopy];
         NSString *script = guestAppInfo[@"jitLaunchScriptJs"];
-        if (![guestAppInfo[@"is32bit"] boolValue] && script.length > 0) {
+        NSNumber *storedScriptType = guestAppInfo[@"jitLaunchScriptType"];
+        NSInteger scriptType = storedScriptType ? storedScriptType.integerValue : (script.length > 0 ? 3 : 0);
+        userInfo[@"scriptType"] = @(scriptType);
+        if (scriptType == 3 && script.length > 0) {
             userInfo[@"script"] = script;
         }
         item.userInfo = userInfo;

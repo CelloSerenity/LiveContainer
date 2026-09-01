@@ -13,7 +13,7 @@
 @end
 
 @interface StikJITWrapper : NSObject
-+ (NSString *)enableJITWith:(int)pid pairingFile:(NSURL *)pairing ddiPath:(NSURL *)ddi scriptString:(NSString*)script;// error:(NSError **)error;
++ (NSString *)enableJITWith:(int)pid pairingFile:(NSURL *)pairing ddiPath:(NSURL *)ddi scriptType:(NSInteger)scriptType scriptString:(NSString*)script;
 @end
 
 int StikJITHeadlessMain(void) {
@@ -29,7 +29,7 @@ int StikJITHeadlessMain(void) {
     [pairingFile startAccessingSecurityScopedResource];
     [ddiPath startAccessingSecurityScopedResource];
     
-    NSString *error = [StikJITWrapper enableJITWith:[appInfo[@"pid"] unsignedIntValue] pairingFile:pairingFile ddiPath:ddiPath scriptString:script];// error:&error];
+    NSString *error = [StikJITWrapper enableJITWith:[appInfo[@"pid"] unsignedIntValue] pairingFile:pairingFile ddiPath:ddiPath scriptType:[appInfo[@"scriptType"] integerValue] scriptString:script];
     if (error.length > 0) {
         NSLog(@"Failed to enable JIT: %@", error);
         NSExtensionContext *context = [NSClassFromString(@"LiveProcessHandler") extensionContext];

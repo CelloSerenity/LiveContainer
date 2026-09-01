@@ -148,9 +148,19 @@ struct LCAppSettingsView: View {
                     Text("lc.appSettings.launchWithJit".loc)
                 }
                 .disabled(model.uiIs32bit)
-                if #available(iOS 26.0, *), model.uiIsJITNeeded, !model.uiIs32bit {
-                    HStack {
+                if #available(iOS 26.0, *), model.uiIsJITNeeded {
+                    Picker(selection: $model.jitLaunchScriptType) {
+                        ForEach(JITScriptType.allCases) { scriptType in
+                            Text(scriptType.displayName).tag(scriptType)
+                        }
+                    } label: {
                         Text("lc.appSettings.jit26.script".loc)
+                    }
+                    .disabled(model.uiIs32bit && LCUtils.isTXMScriptRequired())
+                }
+                if #available(iOS 26.0, *), model.uiIsJITNeeded, model.jitLaunchScriptType == .custom {
+                    HStack {
+                        Text("Custom Script")
                         Spacer()
                         if let base64String = model.jitLaunchScriptJs, !base64String.isEmpty {
                             // Show a generic name since we're not storing the filename

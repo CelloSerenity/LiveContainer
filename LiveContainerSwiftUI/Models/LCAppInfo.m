@@ -46,7 +46,8 @@
                 @"cachedColor",
                 @"LCContainers",
                 @"hideLiveContainer",
-                @"jitLaunchScriptJs"
+                @"jitLaunchScriptJs",
+                @"jitLaunchScriptType"
             ];
             for(NSString* key in lcAppInfoKeys) {
                 _info[key] = _infoPlist[key];
@@ -721,6 +722,22 @@
     } else {
         [_info removeObjectForKey:@"jitLaunchScriptJs"];
     }
+    if (!_autoSaveDisabled) [self save];
+}
+
+- (NSInteger)jitLaunchScriptType {
+    if (self.is32bit && LCUtils.isTXMScriptRequired) {
+        return 1;
+    }
+    NSNumber *scriptType = _info[@"jitLaunchScriptType"];
+    if (scriptType) {
+        return scriptType.integerValue;
+    }
+    return [_info[@"jitLaunchScriptJs"] length] > 0 ? 3 : 0;
+}
+
+- (void)setJitLaunchScriptType:(NSInteger)jitLaunchScriptType {
+    _info[@"jitLaunchScriptType"] = @(jitLaunchScriptType);
     if (!_autoSaveDisabled) [self save];
 }
 

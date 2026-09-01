@@ -207,7 +207,7 @@ extension LCUtils {
         }
     }
     
-    public static func askForJIT(withScript script: String? = nil, appName: String? = nil, classicMode: UInt = 0, onServerMessage: ((String) -> Void)? = nil) async -> Bool {
+    public static func askForJIT(scriptType: JITScriptType = .none, customScript: String? = nil, appName: String? = nil, classicMode: UInt = 0, onServerMessage: ((String) -> Void)? = nil) async -> Bool {
         // if LiveContainer is installed by TrollStore
         let tsPath = "\(Bundle.main.bundlePath)/../_TrollStore"
         if (access((tsPath as NSString).utf8String, 0) == 0) {
@@ -296,7 +296,7 @@ extension LCUtils {
             guard let appName else { onServerMessage?("Unable to get App Name, Please try again."); return false }
             var launchURLStr = "stosdebug://enableJIT?bundleId=\(Bundle.main.bundleIdentifier!)&appName=\(appName)"
             
-            if let script = script, !script.isEmpty {
+            if scriptType == .custom, let script = customScript, !script.isEmpty {
                 launchURLStr += "&script=\(script)"
             }
             
@@ -349,8 +349,17 @@ extension LCUtils {
         } else if jitEnabler == .StikJIT || jitEnabler == .StikJITLC {
             var launchURLStr = "stikjit://enable-jit?bundle-id=\(Bundle.main.bundleIdentifier!)"
 
-            if let script = script, !script.isEmpty {
-                launchURLStr += "&script-data=\(script)"
+            switch scriptType {
+            case .none:
+                break
+            case .universal:
+                launchURLStr += "&script-name=universal.js"
+            case .legacy:
+                launchURLStr += "&script-name=legacy.js"
+            case .custom:
+                if let customScript, !customScript.isEmpty {
+                    launchURLStr += "&script-data=\(customScript)"
+                }
             }
             let launchURL : URL
             if jitEnabler == .StikJITLC {
