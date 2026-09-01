@@ -1100,6 +1100,28 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
     }
     
     func jitLaunch(withPID pid: Int, scriptType: JITScriptType, customScript: String?, appName: String) async {
+        guard let jitEnabler = JITEnablerType(rawValue: LCUtils.appGroupUserDefault.integer(forKey: "LCJITEnablerType")) else {
+            return
+        }
+        if jitEnabler == .StikJITHeadless {
+            var appInfo: [String: Any] = ["jitLaunchScriptType": scriptType.rawValue]
+            if scriptType == .custom, let customScript, !customScript.isEmpty {
+                appInfo["jitLaunchScriptJs"] = customScript
+            }
+            let error = await withCheckedContinuation { continuation in
+                LCSharedUtils.enableStikJIT(forPID: Int32(pid), appInfo: appInfo) { error in
+                    continuation.resume(returning: error)
+                }
+            }
+            if let error {
+                await MainActor.run {
+                    errorInfo = "Builtin StikJIT failed: \(error.localizedDescription)"
+                    errorShow = true
+                }
+            }
+            return
+        }
+
         await MainActor.run {
             let encodedData = customScript?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
                 

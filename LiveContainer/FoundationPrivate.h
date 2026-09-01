@@ -20,6 +20,7 @@
 - (int)pidForRequestIdentifier:(NSUUID *)identifier;
 - (void)_kill:(int)arg1;
 - (void)setRequestCancellationBlock:(void(^)(NSUUID *uuid, NSError *error))callback;
+- (void)setRequestCompletionBlock:(void(^)(NSUUID *uuid, NSArray *extensionItems))callback;
 - (void)setRequestInterruptionBlock:(void(^)(NSUUID *))callback;
 - (void)_hostDidEnterBackgroundNote:(NSNotification *)note;
 - (void)_hostWillResignActiveNote:(NSNotification *)note;

@@ -363,6 +363,9 @@ class LCAppModel: ObservableObject, Hashable {
 #if targetEnvironment(simulator)
         jitNeeded = false
 #endif
+        if multitask {
+            UserDefaults.standard.set(jitNeeded, forKey: "LCMultitaskJITRequested")
+        }
         if jitNeeded {
             if appInfo.is32bit && LCUtils.isTXMScriptRequired() {
                 jitLaunchScriptType = .universal

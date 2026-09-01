@@ -449,4 +449,88 @@ NSString* FBSOpenApplicationOptionKeyPayloadURL = @"__PayloadURL";
     return nil;
 }
 
++ (void)enableStikJITForPID:(int)pid appInfo:(NSDictionary *)appInfo completionHandler:(void (^)(NSError * _Nullable error))completionHandler {
+    NSString *resultKey = [NSString stringWithFormat:@"LCStikJITResult.%d", pid];
+    NSUserDefaults *sharedDefaults = [[NSUserDefaults alloc] initWithSuiteName:self.appGroupID];
+    [sharedDefaults removeObjectForKey:resultKey];
+    void (^reportCompletion)(NSError *) = ^(NSError *error) {
+        [sharedDefaults setObject:error ? error.localizedDescription : @"" forKey:resultKey];
+        completionHandler(error);
+    };
+
+    NSError *extensionError = nil;
+    NSExtension *extension = [NSExtension extensionWithIdentifier:self.liveProcessBundleIdentifier error:&extensionError];
+    if (!extension) {
+        reportCompletion(extensionError ?: [NSError errorWithDomain:@"StikJIT" code:1 userInfo:@{NSLocalizedDescriptionKey: @"LiveProcess extension not found. Please reinstall LiveContainer and select Keep Extensions."}]);
+        return;
+    }
+
+    const char *lcHomePath = getenv("LC_HOME_PATH");
+    NSURL *documentsURL = lcHomePath ? [[NSURL fileURLWithPath:[NSString stringWithUTF8String:lcHomePath]] URLByAppendingPathComponent:@"Documents"] : [NSFileManager.defaultManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].lastObject;
+    NSURL *pairingURL = [documentsURL URLByAppendingPathComponent:@"SideStore/Documents/ALTPairingFile.mobiledevicepairing"];
+    NSURL *ddiURL = [documentsURL URLByAppendingPathComponent:@"SideStore/Documents/DMG"];
+    [NSFileManager.defaultManager createDirectoryAtURL:ddiURL withIntermediateDirectories:YES attributes:nil error:&extensionError];
+    if (extensionError) {
+        reportCompletion(extensionError);
+        return;
+    }
+    if (![NSFileManager.defaultManager fileExistsAtPath:pairingURL.path]) {
+        reportCompletion([NSError errorWithDomain:@"StikJIT" code:2 userInfo:@{NSLocalizedDescriptionKey: @"Pairing file not found. Import a pairing file in SideStore before using built-in StikJIT."}]);
+        return;
+    }
+
+    NSData *pairingBookmark = [pairingURL bookmarkDataWithOptions:(1 << 11) includingResourceValuesForKeys:nil relativeToURL:nil error:&extensionError];
+    if (!pairingBookmark) {
+        reportCompletion(extensionError ?: [NSError errorWithDomain:@"StikJIT" code:5 userInfo:@{NSLocalizedDescriptionKey: @"Failed to access the pairing file."}]);
+        return;
+    }
+    NSData *ddiBookmark = [ddiURL bookmarkDataWithOptions:(1 << 11) includingResourceValuesForKeys:nil relativeToURL:nil error:&extensionError];
+    if (!ddiBookmark) {
+        reportCompletion(extensionError ?: [NSError errorWithDomain:@"StikJIT" code:6 userInfo:@{NSLocalizedDescriptionKey: @"Failed to access the Developer Disk Image folder."}]);
+        return;
+    }
+
+    NSMutableDictionary *userInfo = [@{
+        @"customPayloadDylib": @"@rpath/StikJITHeadless.framework/StikJITHeadless",
+        @"customPayloadEntry": @"StikJITHeadlessMain",
+        @"pairingBookmark": pairingBookmark,
+        @"ddiBookmark": ddiBookmark,
+        @"pid": @(pid)
+    } mutableCopy];
+    NSString *script = appInfo[@"jitLaunchScriptJs"];
+    NSNumber *storedScriptType = appInfo[@"jitLaunchScriptType"];
+    NSInteger scriptType = storedScriptType ? storedScriptType.integerValue : (script.length > 0 ? 3 : 0);
+    userInfo[@"scriptType"] = @(scriptType);
+    if (scriptType == 3 && script.length > 0) {
+        userInfo[@"script"] = script;
+    }
+
+    NSExtensionItem *item = [NSExtensionItem new];
+    item.userInfo = userInfo;
+    __block BOOL finished = NO;
+    __block NSExtension *activeExtension = extension;
+    void (^finish)(NSError *) = ^(NSError *error) {
+        if (finished) {
+            return;
+        }
+        finished = YES;
+        reportCompletion(error);
+        activeExtension = nil;
+    };
+    extension.requestCancellationBlock = ^(NSUUID *uuid, NSError *error) {
+        finish(error);
+    };
+    extension.requestCompletionBlock = ^(NSUUID *uuid, NSArray *extensionItems) {
+        finish(nil);
+    };
+    extension.requestInterruptionBlock = ^(NSUUID *uuid) {
+        finish([NSError errorWithDomain:@"StikJIT" code:3 userInfo:@{NSLocalizedDescriptionKey: @"The StikJIT helper was interrupted."}]);
+    };
+    [extension beginExtensionRequestWithInputItems:@[item] completion:^(NSUUID *uuid) {
+        if (!uuid) {
+            finish([NSError errorWithDomain:@"StikJIT" code:4 userInfo:@{NSLocalizedDescriptionKey: @"Failed to start the StikJIT helper."}]);
+        }
+    }];
+}
+
 @end

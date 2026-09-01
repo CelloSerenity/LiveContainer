@@ -18,4 +18,5 @@
 + (NSArray<NSString*>*)lcUnorderedUrlSchemes;
 + (NSArray<NSString*>*)lcUrlSchemes;
 + (NSString *)liveProcessBundleIdentifier;
++ (void)enableStikJITForPID:(int)pid appInfo:(NSDictionary *)appInfo completionHandler:(void (^)(NSError * _Nullable error))completionHandler;
 @end

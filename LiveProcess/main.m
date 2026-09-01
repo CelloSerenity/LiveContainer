@@ -65,6 +65,7 @@ int LiveProcessMain(int argc, char *argv[]) {
     [lcUserDefaults setObject:appInfo[@"launchAppUrlScheme"] forKey:@"launchAppUrlScheme"];
     [lcUserDefaults setObject:appInfo[@"selected"] forKey:@"selected"];
     [lcUserDefaults setObject:appInfo[@"selectedContainer"] forKey:@"selectedContainer"];
+    [lcUserDefaults setObject:appInfo[@"jitRequested"] forKey:@"LCMultitaskJITRequested"];
     
     bool access = false;
     NSArray* bookmarks = appInfo[@"bookmarks"];

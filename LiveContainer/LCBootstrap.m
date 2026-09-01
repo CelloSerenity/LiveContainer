@@ -253,21 +253,6 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
     if([[lcUserDefaults objectForKey:@"LCWaitForDebugger"] boolValue]) {
         sleep(100);
     }
-    if (!LCSharedUtils.certificatePassword && !isSideStore) {
-#if !TARGET_OS_SIMULATOR
-        if(@available(iOS 26.0 ,*))  {
-            return @"JITLess mode is required since iOS 26. Please set it up in settings. \nPlease go to LiveContainer settings -> tap \"Import Certificate from SideStore\" / \"Import Certificate\"";
-        }
-#endif
-        // First of all, let's check if we have JIT
-        for (int i = 0; i < 10 && !checkJITEnabled(); i++) {
-            usleep(1000*100);
-        }
-        if (!checkJITEnabled()) {
-            appError = @"JIT was not enabled. If you want to use LiveContainer without JIT, setup JITLess mode in settings.";
-            return appError;
-        }
-    }
 
     NSFileManager *fm = NSFileManager.defaultManager;
     NSString *docPath = [NSString stringWithFormat:@"%s/Documents", getenv("LC_HOME_PATH")];
@@ -297,6 +282,28 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
     
     if(!guestAppInfo) {
         return @"App bundle not found! Unable to read LCAppInfo.plist.";
+    }
+
+    BOOL jitRequested = !isLiveProcess || [lcUserDefaults boolForKey:@"LCMultitaskJITRequested"];
+    [lcUserDefaults removeObjectForKey:@"LCMultitaskJITRequested"];
+    BOOL appNeedsJIT = [guestAppInfo[@"isJITNeeded"] boolValue] || [guestAppInfo[@"is32bit"] boolValue];
+    BOOL useBuiltInStikJIT = (isLiveProcess ? jitRequested : appNeedsJIT) && [NSUserDefaults.lcSharedDefaults integerForKey:@"LCJITEnablerType"] == 7;
+    if (!LCSharedUtils.certificatePassword && !isSideStore) {
+#if !TARGET_OS_SIMULATOR
+        if(@available(iOS 26.0 ,*))  {
+            return @"JITLess mode is required since iOS 26. Please set it up in settings. \nPlease go to LiveContainer settings -> tap \"Import Certificate from SideStore\" / \"Import Certificate\"";
+        }
+#endif
+        if (!(isLiveProcess && useBuiltInStikJIT)) {
+            // First of all, let's check if we have JIT
+            for (int i = 0; i < 10 && !checkJITEnabled(); i++) {
+                usleep(1000*100);
+            }
+            if (!checkJITEnabled()) {
+                appError = @"JIT was not enabled. If you want to use LiveContainer without JIT, setup JITLess mode in settings.";
+                return appError;
+            }
+        }
     }
     
     if([guestAppInfo[@"doUseLCBundleId"] boolValue] ) {
@@ -366,52 +373,47 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
 
     // If JIT is enabled, bypass library validation so we can load arbitrary binaries
     bool isJitEnabled = checkJITEnabled();
-    if (isJitEnabled) {
+    if (isLiveProcess && useBuiltInStikJIT) {
+        NSString *resultKey = [NSString stringWithFormat:@"LCStikJITResult.%d", getpid()];
+        NSString *result = nil;
+        for (int i = 0; i < 3000 && !result; i++) {
+            result = [NSUserDefaults.lcSharedDefaults stringForKey:resultKey];
+            if (!result) {
+                usleep(1000*100);
+            }
+        }
+        [NSUserDefaults.lcSharedDefaults removeObjectForKey:resultKey];
+        if (!result) {
+            return @"Timed out waiting for built-in StikJIT.";
+        }
+        if (result.length > 0) {
+            return [@"Builtin StikJIT failed: " stringByAppendingString:result];
+        }
+        if (!checkJITEnabled()) {
+            return @"Builtin StikJIT completed without enabling JIT.";
+        }
         init_bypassDyldLibValidation();
-    } else if (!isLiveProcess && [guestAppInfo[@"isJITNeeded"] boolValue] && [NSUserDefaults.lcSharedDefaults integerForKey:@"LCJITEnablerType"] == 7) { // JITEnablerTypeStikJITHeadless
-        __block NSError *error;
-        NSExtension *ext = [NSExtension extensionWithIdentifier:LCSharedUtils.liveProcessBundleIdentifier error:&error];
-        if (!ext) {
-            return [@"JIT was required, but could not spawn StikDebug because LiveProcess is missing. " stringByAppendingString:error.localizedDescription];
-        }
-        NSURL *pairingURL = [NSURL fileURLWithPath:[docPath stringByAppendingPathComponent:@"SideStore/Documents/ALTPairingFile.mobiledevicepairing"]];
-        NSURL *ddiURL = [NSURL fileURLWithPath:[docPath stringByAppendingPathComponent:@"SideStore/Documents/DMG"]];
-        [fm createDirectoryAtURL:ddiURL withIntermediateDirectories:YES attributes:nil error:nil];
-        if (![fm fileExistsAtPath:pairingURL.path]) {
-            return @"Unexpected pairing file not found unhandled by UI";
-        }
-        
-        NSExtensionItem *item = [NSExtensionItem new];
-        NSMutableDictionary *userInfo = [@{
-            // TODO: pairing file sandbox tokens
-            @"customPayloadDylib": @"@rpath/StikJITHeadless.framework/StikJITHeadless",
-            @"customPayloadEntry": @"StikJITHeadlessMain",
-            @"pairingBookmark": [pairingURL bookmarkDataWithOptions:(1<<11) includingResourceValuesForKeys:0 relativeToURL:0 error:0],
-            @"ddiBookmark": [ddiURL bookmarkDataWithOptions:(1<<11) includingResourceValuesForKeys:0 relativeToURL:0 error:0],
-            @"pid": @(getpid())
-        } mutableCopy];
-        NSString *script = guestAppInfo[@"jitLaunchScriptJs"];
-        NSNumber *storedScriptType = guestAppInfo[@"jitLaunchScriptType"];
-        NSInteger scriptType = storedScriptType ? storedScriptType.integerValue : (script.length > 0 ? 3 : 0);
-        userInfo[@"scriptType"] = @(scriptType);
-        if (scriptType == 3 && script.length > 0) {
-            userInfo[@"script"] = script;
-        }
-        item.userInfo = userInfo;
-        ext.requestCancellationBlock = ^(NSUUID *uuid, NSError *jitError) {
+        isJitEnabled = YES;
+    } else if (isJitEnabled) {
+        init_bypassDyldLibValidation();
+    } else if (!isLiveProcess && useBuiltInStikJIT) {
+        __block BOOL completed = NO;
+        __block NSError *error = nil;
+        [LCSharedUtils enableStikJITForPID:getpid() appInfo:guestAppInfo completionHandler:^(NSError *jitError) {
             error = jitError;
-        };
-        [ext beginExtensionRequestWithInputItems:@[item] completion:^(NSUUID *uuid) {
-            CFRunLoopStop(CFRunLoopGetMain());
+            completed = YES;
         }];
-        CFRunLoopRun();
-        while (!error && !checkJITEnabled()) {
-            usleep(1000*100);
+        while (!completed) {
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
         }
+        [NSUserDefaults.lcSharedDefaults removeObjectForKey:[NSString stringWithFormat:@"LCStikJITResult.%d", getpid()]];
         if (error) {
             return [@"Builtin StikJIT failed: " stringByAppendingString:error.localizedDescription];
         }
-        isJitEnabled = YES;
+        isJitEnabled = checkJITEnabled();
+        if (!isJitEnabled) {
+            return @"Builtin StikJIT completed without enabling JIT.";
+        }
     }
 
     // Locate dyld image name address

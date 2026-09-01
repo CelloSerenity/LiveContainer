@@ -30,10 +30,14 @@ int StikJITHeadlessMain(void) {
     [ddiPath startAccessingSecurityScopedResource];
     
     NSString *error = [StikJITWrapper enableJITWith:[appInfo[@"pid"] unsignedIntValue] pairingFile:pairingFile ddiPath:ddiPath scriptType:[appInfo[@"scriptType"] integerValue] scriptString:script];
+    [pairingFile stopAccessingSecurityScopedResource];
+    [ddiPath stopAccessingSecurityScopedResource];
+    NSExtensionContext *context = [NSClassFromString(@"LiveProcessHandler") extensionContext];
     if (error.length > 0) {
         NSLog(@"Failed to enable JIT: %@", error);
-        NSExtensionContext *context = [NSClassFromString(@"LiveProcessHandler") extensionContext];
         [context cancelRequestWithError:[NSError errorWithDomain:@"StikJIT" code:1 userInfo:@{NSLocalizedDescriptionKey: error}]];
+    } else {
+        [context completeRequestReturningItems:nil completionHandler:nil];
     }
     return 0;
 }

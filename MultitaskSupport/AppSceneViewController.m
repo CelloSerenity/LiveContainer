@@ -64,6 +64,11 @@
         @"bookmarks": bookmarks,
         @"lcHomePath": NSHomeDirectory(),
     }.mutableCopy;
+    NSNumber *jitRequested = [NSUserDefaults.standardUserDefaults objectForKey:@"LCMultitaskJITRequested"];
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:@"LCMultitaskJITRequested"];
+    if (jitRequested) {
+        userInfo[@"jitRequested"] = jitRequested;
+    }
     
     NSString* launchAppUrlScheme = [NSUserDefaults.standardUserDefaults stringForKey:@"launchAppUrlScheme"];
     [NSUserDefaults.lcUserDefaults removeObjectForKey:@"launchAppUrlScheme"];
