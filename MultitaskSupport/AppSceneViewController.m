@@ -76,6 +76,16 @@
         NSData* bookmarkData = [docURL bookmarkDataWithOptions:(1<<11) includingResourceValuesForKeys:0 relativeToURL:0 error:0];
         [bookmarks addObject:bookmarkData];
     } else {
+        if ([NSUserDefaults.lcSharedDefaults integerForKey:@"LCJITEnablerType"] == 7) {
+            NSURL *jitFilesURL = [docURL URLByAppendingPathComponent:@"SideStore/Documents"];
+            NSURL *pairingURL = [jitFilesURL URLByAppendingPathComponent:@"ALTPairingFile.mobiledevicepairing"];
+            if ([NSFileManager.defaultManager fileExistsAtPath:pairingURL.path]) {
+                NSData *bookmarkData = [jitFilesURL bookmarkDataWithOptions:(1<<11) includingResourceValuesForKeys:0 relativeToURL:0 error:0];
+                if (bookmarkData) {
+                    [bookmarks addObject:bookmarkData];
+                }
+            }
+        }
         bool isSharedApp = false;
         NSBundle* bundle = [LCSharedUtils findBundleWithBundleId:bundleId isSharedAppOut:&isSharedApp];
         // when mutlitask with private app, we can restrict its sandbox to only its own container
