@@ -121,7 +121,7 @@ struct LCSettingsView: View {
                         Text("lc.settings.jitLessDesc".loc)
                     }
                 }
-                if (store != .Unknown && store != .ADP) || LCUtils.isAppGroupAltStoreLike() {
+                if store != .Unknown || LCUtils.isAppGroupAltStoreLike() {
                     Section{
                         NavigationLink {
                             LCMultiLCManagementView()
