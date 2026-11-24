@@ -14,6 +14,7 @@ BOOL launchURLProcessed = NO;
 static void registerLegacyExternalDisplayAccessory(void) API_AVAILABLE(ios(27.0)) {
     NSDictionary *info = NSBundle.mainBundle.infoDictionary;
     NSString *sdkName = info[@"DTSDKName"];
+    NSLog(@"[LC AirPlay] Guest SDK: %@", sdkName);
     if (![sdkName hasPrefix:@"iphoneos"] || [sdkName substringFromIndex:@"iphoneos".length].intValue >= 27) {
         return;
     }
@@ -23,9 +24,15 @@ static void registerLegacyExternalDisplayAccessory(void) API_AVAILABLE(ios(27.0)
     NSDictionary *externalConfiguration = configurations.firstObject;
     NSString *delegateName = externalConfiguration[@"UISceneDelegateClassName"];
     if (!delegateName.length) {
+        NSLog(@"[LC AirPlay] Guest has no external scene delegate in its manifest");
         return;
     }
 
+    NSLog(@"[LC AirPlay] Waiting for application window, external delegate: %@", delegateName);
+    [NSNotificationCenter.defaultCenter addObserverForName:UISceneWillConnectNotification object:nil queue:nil usingBlock:^(NSNotification *notification) {
+        UIScene *scene = notification.object;
+        NSLog(@"[LC AirPlay] Scene connected, role: %@, delegate: %@", scene.session.role, NSStringFromClass([scene.delegate class]));
+    }];
     static char registrationKey;
     [NSNotificationCenter.defaultCenter addObserverForName:UIWindowDidBecomeKeyNotification object:nil queue:nil usingBlock:^(NSNotification *notification) {
         UIWindow *window = notification.object;
@@ -38,6 +45,7 @@ static void registerLegacyExternalDisplayAccessory(void) API_AVAILABLE(ios(27.0)
             if (window.isKeyWindow && controller && !objc_getAssociatedObject(controller, &registrationKey)) {
                 Class delegateClass = NSClassFromString(delegateName);
                 if (!delegateClass) {
+                    NSLog(@"[LC AirPlay] External delegate class could not be loaded");
                     return;
                 }
                 NSString *name = externalConfiguration[@"UISceneConfigurationName"];
@@ -47,6 +55,10 @@ static void registerLegacyExternalDisplayAccessory(void) API_AVAILABLE(ios(27.0)
                 UISceneAccessoryRegistration *registration = [controller registerSceneAccessory:accessory];
                 objc_setAssociatedObject(controller, &registrationKey, registration, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 registration.enabled = YES;
+                NSLog(@"[LC AirPlay] Registration returned: %d, enabled: %d, available: %d", registration != nil, registration.enabled, registration.available);
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                    NSLog(@"[LC AirPlay] Registration available after 5 seconds: %d", registration.available);
+                });
             }
         });
     }];
