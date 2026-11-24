@@ -11,6 +11,8 @@ NSMutableArray<NSString*>* LCSupportedUrlSchemes = nil;
 BOOL launchURLProcessed = NO;
 
 #if !TARGET_OS_MACCATALYST && __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
+static NSString *guestExternalSceneDelegateName;
+
 static void registerLegacyExternalDisplayAccessory(void) API_AVAILABLE(ios(27.0)) {
     NSDictionary *info = NSBundle.mainBundle.infoDictionary;
     NSString *sdkName = info[@"DTSDKName"];
@@ -27,6 +29,9 @@ static void registerLegacyExternalDisplayAccessory(void) API_AVAILABLE(ios(27.0)
         NSLog(@"[LC AirPlay] Guest has no external scene delegate in its manifest");
         return;
     }
+
+    guestExternalSceneDelegateName = delegateName;
+    swizzle(UIScene.class, @selector(initWithSession:connectionOptions:), @selector(hook_initWithSession:connectionOptions:));
 
     NSLog(@"[LC AirPlay] Waiting for application window, external delegate: %@", delegateName);
     [NSNotificationCenter.defaultCenter addObserverForName:UISceneWillConnectNotification object:nil queue:nil usingBlock:^(NSNotification *notification) {
@@ -728,6 +733,23 @@ static LCControlAppURLHandling LCHandleControlAppURL(NSURL *url, NSString** modi
 
 // Handler for SceneDelegate
 @implementation UIScene(LiveContainerHook)
+#if !TARGET_OS_MACCATALYST && __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
+- (instancetype)hook_initWithSession:(UISceneSession *)session connectionOptions:(UISceneConnectionOptions *)connectionOptions __attribute__((objc_method_family(init))) {
+    if (@available(iOS 27.0, *)) {
+        UISceneConfiguration *configuration = session.configuration;
+        if ([session.role isEqualToString:UIWindowSceneSessionRoleExternalDisplayNonInteractive] &&
+            !configuration.delegateClass) {
+            Class delegateClass = NSClassFromString(guestExternalSceneDelegateName);
+            if (delegateClass) {
+                configuration.delegateClass = delegateClass;
+                NSLog(@"[LC AirPlay] Configured unclaimed external scene with %@", guestExternalSceneDelegateName);
+            }
+        }
+    }
+    return [self hook_initWithSession:session connectionOptions:connectionOptions];
+}
+#endif
+
 - (void)hook_scene:(id)scene didReceiveActions:(NSSet *)actions fromTransitionContext:(id)context {
     UIOpenURLAction *urlAction = nil;
     for (id obj in actions.allObjects) {
