@@ -3,15 +3,66 @@
 #import "UIKitPrivate.h"
 #import "../LiveContainer/utils.h"
 #import <LocalAuthentication/LocalAuthentication.h>
+#import <objc/runtime.h>
 #import "Localization.h"
 
 UIInterfaceOrientation LCOrientationLock = UIInterfaceOrientationUnknown;
 NSMutableArray<NSString*>* LCSupportedUrlSchemes = nil;
 BOOL launchURLProcessed = NO;
 
+#if !TARGET_OS_MACCATALYST && __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
+static void registerLegacyExternalDisplayAccessory(void) API_AVAILABLE(ios(27.0)) {
+    NSDictionary *info = NSBundle.mainBundle.infoDictionary;
+    NSString *sdkName = info[@"DTSDKName"];
+    if (![sdkName hasPrefix:@"iphoneos"] || [sdkName substringFromIndex:@"iphoneos".length].intValue >= 27) {
+        return;
+    }
+
+    UISceneSessionRole role = UIWindowSceneSessionRoleExternalDisplayNonInteractive;
+    NSArray *configurations = info[@"UIApplicationSceneManifest"][@"UISceneConfigurations"][role];
+    NSDictionary *externalConfiguration = configurations.firstObject;
+    NSString *delegateName = externalConfiguration[@"UISceneDelegateClassName"];
+    if (!delegateName.length) {
+        return;
+    }
+
+    static char registrationKey;
+    [NSNotificationCenter.defaultCenter addObserverForName:UIWindowDidBecomeKeyNotification object:nil queue:nil usingBlock:^(NSNotification *notification) {
+        UIWindow *window = notification.object;
+        if (![window.windowScene.session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
+            return;
+        }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIViewController *controller = window.rootViewController;
+            if (window.isKeyWindow && controller && !objc_getAssociatedObject(controller, &registrationKey)) {
+                Class delegateClass = NSClassFromString(delegateName);
+                if (!delegateClass) {
+                    return;
+                }
+                NSString *name = externalConfiguration[@"UISceneConfigurationName"];
+                UISceneConfiguration *configuration = [[UISceneConfiguration alloc] initWithName:name sessionRole:role];
+                configuration.delegateClass = delegateClass;
+                UISceneAccessory *accessory = [UISceneAccessory externalNonInteractiveSceneAccessoryWithConfiguration:configuration];
+                UISceneAccessoryRegistration *registration = [controller registerSceneAccessory:accessory];
+                objc_setAssociatedObject(controller, &registrationKey, registration, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                registration.enabled = YES;
+            }
+        });
+    }];
+}
+#endif
+
 __attribute__((constructor))
 static void UIKitGuestHooksInit() {
     if(!NSUserDefaults.lcGuestAppId) return;
+#if !TARGET_OS_MACCATALYST && __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
+    if (@available(iOS 27.0, *)) {
+        if (!NSUserDefaults.isLiveProcess) {
+            registerLegacyExternalDisplayAccessory();
+        }
+    }
+#endif
     swizzle(UIApplication.class, @selector(_applicationOpenURLAction:payload:origin:), @selector(hook__applicationOpenURLAction:payload:origin:));
     swizzle(UIApplication.class, @selector(_connectUISceneFromFBSScene:transitionContext:), @selector(hook__connectUISceneFromFBSScene:transitionContext:));
     swizzle(UIApplication.class, @selector(openURL:options:completionHandler:), @selector(hook_openURL:options:completionHandler:));
